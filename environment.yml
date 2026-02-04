@@ -1,0 +1,30 @@
+name: spatial_insights_cohort
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - r-base=4.3
+  - r-essentials
+  - r-data.table
+  - r-dplyr
+  - r-matrix
+  - r-biocmanager
+  - bioconductor-spatiallibd
+  - bioconductor-spatialexperiment
+  - bioconductor-summarizedexperiment
+  - bioconductor-singlecellexperiment
+  - bioconductor-dropletutils
+  - bioconductor-scater
+  - bioconductor-scran
+  - bioconductor-scuttle
+  - bioconductor-batchelor
+  - bioconductor-bayesspace
+  - r-uwot
+  - r-mclust
+  - r-rann
+  - r-shiny
+  - r-plotly
+  - r-ggplot2
+  - r-dt
+  - r-bslib
+  - r-jsonlite
