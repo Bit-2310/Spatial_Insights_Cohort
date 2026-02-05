@@ -62,7 +62,7 @@ cat("- cohort_umap_plot:", file.exists(file.path(integration_dir, "plots", "coho
     ui <- fluidPage(
       theme = bs_theme(version = 5, base_font = font_google("IBM Plex Sans")),
       h2("Spatial Insights Cohort"),
-      p("No outputs detected."),
+      p("No outputs detected yet. Run the pipeline to populate the dashboard."),
       div(
         class = "panel-card",
         h4("Run pipeline stages"),
@@ -83,6 +83,10 @@ cat("- cohort_umap_plot:", file.exists(file.path(integration_dir, "plots", "coho
 
 # Defaults
 first_sample <- sample_ids[1]
+second_sample <- if (length(sample_ids) >= 2) sample_ids[2] else first_sample
+
+default_compare_left <- if ("BC01" %in% sample_ids) "BC01" else first_sample
+default_compare_right <- if ("BC02" %in% sample_ids) "BC02" else second_sample
 
 default_gene <- get_default_gene(first_sample, svg_dir)
 if (is.null(default_gene)) default_gene <- NA_character_
@@ -90,60 +94,75 @@ if (is.null(default_gene)) default_gene <- NA_character_
 ui <- fluidPage(
   theme = bs_theme(
     version = 5,
-    base_font = font_google("IBM Plex Sans"),
-    heading_font = font_google("IBM Plex Sans"),
-    code_font = font_google("IBM Plex Mono"),
-    primary = "#0f6f6f",
-    bg = "#f5f6f2",
-    fg = "#162028"
+    base_font = font_google("Space Grotesk"),
+    heading_font = font_google("Space Grotesk"),
+    code_font = font_google("JetBrains Mono"),
+    primary = "#1f1f1f",
+    bg = "#f6f6f6",
+    fg = "#141414"
   ),
   tags$head(
     tags$title("Spatial Insights Cohort"),
     tags$link(rel = "stylesheet", type = "text/css", href = "styles.css")
   ),
   div(
-    class = "app-hero",
-    h2("Spatial Insights Cohort"),
-    p("Product view of spatial results")
-  ),
-  fluidRow(
-    class = "control-row",
-    column(4, selectInput("sample_id", "Sample", choices = sample_ids, selected = first_sample)),
-    column(4, sliderInput("top_n", "Top N SVG genes", min = 10, max = 50, value = 25, step = 1)),
-    column(4, checkboxInput("advanced_svg", "Inspect single gene", value = FALSE))
-  ),
-  fluidRow(
-    column(12, actionButton("reset_defaults", "Reset defaults"))
-  ),
-  tabsetPanel(
-    tabPanel(
-      "Overview",
+    class = "app-shell",
+    div(
+      class = "app-hero",
+      h2("Spatial Insights Cohort"),
+      p("Business-ready overview of cohort spatial results")
+    ),
+    div(
+      class = "panel-card control-card",
+      div(class = "section-title", "Controls"),
       fluidRow(
-        column(12, uiOutput("overview_kpis"))
+        class = "control-row",
+        column(4, selectInput("sample_id", "Sample", choices = sample_ids, selected = first_sample)),
+        column(4, sliderInput("top_n", "Top N SVGs", min = 10, max = 50, value = 25, step = 1)),
+        column(4, checkboxInput("advanced_svg", "Inspect single gene", value = FALSE))
       ),
       div(
-        class = "panel-card",
-        h4("Run Summary"),
-        uiOutput("run_summary")
-      ),
-      div(
-        class = "panel-card",
-        h4("Summary"),
-        p("Cohort summary.")
-      ),
-      div(
-        class = "panel-card",
-        h4("Data ready"),
-        uiOutput("data_ready")
-      ),
-      bslib::accordion(
-        bslib::accordion_panel(
-          "Diagnostics",
-          uiOutput("diagnostics_panel")
-        ),
-        open = NULL
+        class = "control-actions",
+        actionButton("reset_defaults", "Reset defaults")
       )
     ),
+    tabsetPanel(
+      tabPanel(
+        "Overview",
+        fluidRow(
+          column(12, uiOutput("overview_kpis"))
+        ),
+        fluidRow(
+          column(
+            7,
+            div(
+              class = "panel-card",
+              h4("Run Summary"),
+              uiOutput("run_summary")
+            )
+          ),
+          column(
+            5,
+            div(
+              class = "panel-card",
+              h4("Data readiness"),
+              uiOutput("data_ready")
+            )
+          )
+        ),
+        div(
+          class = "panel-card",
+          h4("Summary"),
+          p("This dashboard summarizes cohort outputs for quality checks, reporting, and stakeholder review.")
+        ),
+        bslib::accordion(
+          bslib::accordion_panel(
+            "Diagnostics",
+            uiOutput("diagnostics_panel")
+          ),
+          open = NULL
+        )
+      ),
     tabPanel(
       "Domains",
       uiOutput("regions_summary"),
@@ -201,14 +220,32 @@ ui <- fluidPage(
       )
     ),
     tabPanel(
+      "Compare",
+      div(
+        class = "panel-card control-card",
+        div(class = "section-title", "Domains comparison"),
+        fluidRow(
+          class = "control-row",
+          column(6, selectInput("compare_left", "Left sample", choices = sample_ids, selected = default_compare_left)),
+          column(6, selectInput("compare_right", "Right sample", choices = sample_ids, selected = default_compare_right))
+        )
+      ),
+      fluidRow(
+        column(6, plotlyOutput("compare_domains_left", height = "520px")),
+        column(6, plotlyOutput("compare_domains_right", height = "520px"))
+      )
+    ),
+    tabPanel(
       "Methods",
       tags$ul(
         tags$li("Data source: DLPFC Visium"),
-        tags$li("QC: spot filtering"),
-        tags$li("Domains: BayesSpace"),
-        tags$li("SVG: Moran's I"),
-        tags$li("Neighborhood: kNN adjacency")
+        tags$li("QC: threshold-based spot filtering"),
+        tags$li("Normalization: log-normalization + PCA"),
+        tags$li("Domains: BayesSpace (if available) or k-means fallback"),
+        tags$li("SVG: Moran's I on top variable genes"),
+        tags$li("Neighborhood: kNN adjacency summaries")
       )
+    )
     )
   )
 )
@@ -347,6 +384,42 @@ server <- function(input, output, session) {
   output$domains_plot <- renderPlotly({
     sample_id <- input$sample_id
     withProgress(message = "Loading domains", value = 0.2, {
+      if (!sample_id %in% names(rv$domain_frames)) {
+        dom_path <- resolve_domains_rds(processed_dir, sample_id)
+        if (!file.exists(dom_path)) {
+          return(plot_placeholder_plotly("Domains not available"))
+        }
+        rv$domain_frames[[sample_id]] <- load_domain_frame(dom_path)
+      }
+      df <- rv$domain_frames[[sample_id]]
+      if (is.null(df)) return(plot_placeholder_plotly("Domains not available"))
+      gg <- plot_domain_scatter(df)
+      plotly::ggplotly(gg, tooltip = "text")
+    })
+  })
+
+  output$compare_domains_left <- renderPlotly({
+    sample_id <- input$compare_left
+    req(sample_id)
+    withProgress(message = "Loading domains (left)", value = 0.2, {
+      if (!sample_id %in% names(rv$domain_frames)) {
+        dom_path <- resolve_domains_rds(processed_dir, sample_id)
+        if (!file.exists(dom_path)) {
+          return(plot_placeholder_plotly("Domains not available"))
+        }
+        rv$domain_frames[[sample_id]] <- load_domain_frame(dom_path)
+      }
+      df <- rv$domain_frames[[sample_id]]
+      if (is.null(df)) return(plot_placeholder_plotly("Domains not available"))
+      gg <- plot_domain_scatter(df)
+      plotly::ggplotly(gg, tooltip = "text")
+    })
+  })
+
+  output$compare_domains_right <- renderPlotly({
+    sample_id <- input$compare_right
+    req(sample_id)
+    withProgress(message = "Loading domains (right)", value = 0.2, {
       if (!sample_id %in% names(rv$domain_frames)) {
         dom_path <- resolve_domains_rds(processed_dir, sample_id)
         if (!file.exists(dom_path)) {
