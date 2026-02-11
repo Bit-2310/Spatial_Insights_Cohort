@@ -7,3 +7,10 @@ work/
 *.rds
 *.png
 *.csv
+# Ignore deployment and temp files
+app/DEPLOYMENT.md
+app/.Rprofile
+app/app.R.backup
+app/rsconnect/
+.RData
+.Rhistory
