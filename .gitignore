@@ -3,6 +3,7 @@ outputs/
 logs/
 work/
 .nextflow/
+.nextflow.log*
 *.rds
 *.png
 *.csv

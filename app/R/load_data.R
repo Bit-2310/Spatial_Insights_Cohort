@@ -68,7 +68,14 @@ get_default_pair <- function(sample_id, nb_dir) {
   df$domain_pair[1]
 }
 
-load_domain_frame <- function(domain_rds) {
+load_domain_frame <- function(domain_rds, max_size_mb = 30) {
+  # Check file size before loading (shinyapps.io optimization)
+  info <- file.info(domain_rds)
+  if (!is.na(info$size) && info$size > max_size_mb * 1024^2) {
+    warning(paste("File too large for deployment:", domain_rds))
+    return(NULL)
+  }
+  
   spe <- readRDS(domain_rds)
   coords <- SpatialExperiment::spatialCoords(spe)
   if (is.null(coords)) return(NULL)
@@ -114,12 +121,20 @@ load_svg_ranked <- function(sample_id, svg_dir) {
   df
 }
 
-load_svg_score_frame <- function(sample_id, processed_dir, svg_dir, top_n) {
+load_svg_score_frame <- function(sample_id, processed_dir, svg_dir, top_n, max_size_mb = 30) {
   df <- load_svg_ranked(sample_id, svg_dir)
   if (is.null(df)) return(NULL)
   top_genes <- df$gene[seq_len(min(top_n, nrow(df)))]
 
   norm_path <- resolve_norm_rds(processed_dir, sample_id)
+  
+  # Check file size before loading (shinyapps.io optimization)
+  info <- file.info(norm_path)
+  if (!is.na(info$size) && info$size > max_size_mb * 1024^2) {
+    warning(paste("File too large for deployment:", norm_path))
+    return(NULL)
+  }
+  
   spe <- readRDS(norm_path)
   if (is.null(spe) || !"logcounts" %in% SummarizedExperiment::assayNames(spe)) return(NULL)
 
